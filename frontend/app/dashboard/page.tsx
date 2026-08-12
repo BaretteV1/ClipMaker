@@ -28,6 +28,8 @@ export default function Dashboard() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [url, setUrl] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [inputMode, setInputMode] = useState<"url" | "upload">("url");
   const [videoType, setVideoType] = useState("podcast");
   const [nClips, setNClips] = useState(3);
   const [trackingMode, setTrackingMode] = useState("simple");
@@ -56,16 +58,24 @@ export default function Dashboard() {
 
     try {
       const headers = await authHeader();
-      const res = await fetch(`${API_URL}/jobs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({
-          url,
-          video_type: videoType,
-          n_clips: nClips,
-          tracking_mode: trackingMode,
-        }),
-      });
+      let res: Response;
+
+      if (inputMode === "upload") {
+        if (!file) throw new Error("Choisis un fichier vidéo.");
+        const form = new FormData();
+        form.append("file", file);
+        form.append("video_type", videoType);
+        form.append("n_clips", String(nClips));
+        form.append("tracking_mode", trackingMode);
+        res = await fetch(`${API_URL}/jobs/upload`, { method: "POST", headers, body: form });
+      } else {
+        res = await fetch(`${API_URL}/jobs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify({ url, video_type: videoType, n_clips: nClips, tracking_mode: trackingMode }),
+        });
+      }
+
       if (!res.ok) throw new Error(await res.text());
       const { job_id } = await res.json();
       setJob({ id: job_id, status: "queued" });
@@ -115,15 +125,47 @@ export default function Dashboard() {
 
       <form onSubmit={handleSubmit} className="space-y-4 border border-reel-line bg-reel-panel p-5 mb-8">
         <div>
-          <label className="block text-xs text-reel-dim mb-1 tracking-wide">URL DE LA VIDÉO</label>
-          <input
-            type="url"
-            required
-            placeholder="https://www.youtube.com/watch?v=..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="w-full bg-reel-bg border border-reel-line px-3 py-2 text-sm focus:outline-none focus:border-reel-amber"
-          />
+          <div className="flex gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setInputMode("url")}
+              className={`text-xs px-3 py-1 border ${inputMode === "url" ? "border-reel-amber text-reel-amber" : "border-reel-line text-reel-dim"}`}
+            >
+              URL
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode("upload")}
+              className={`text-xs px-3 py-1 border ${inputMode === "upload" ? "border-reel-amber text-reel-amber" : "border-reel-line text-reel-dim"}`}
+            >
+              Fichier
+            </button>
+          </div>
+
+          {inputMode === "url" ? (
+            <>
+              <label className="block text-xs text-reel-dim mb-1 tracking-wide">URL DE LA VIDÉO</label>
+              <input
+                type="url"
+                required={inputMode === "url"}
+                placeholder="https://www.youtube.com/watch?v=..."
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="w-full bg-reel-bg border border-reel-line px-3 py-2 text-sm focus:outline-none focus:border-reel-amber"
+              />
+            </>
+          ) : (
+            <>
+              <label className="block text-xs text-reel-dim mb-1 tracking-wide">FICHIER VIDÉO</label>
+              <input
+                type="file"
+                accept="video/*"
+                required={inputMode === "upload"}
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="w-full bg-reel-bg border border-reel-line px-3 py-2 text-sm file:mr-3 file:bg-reel-line file:text-reel-text file:border-0 file:px-2 file:py-1"
+              />
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
