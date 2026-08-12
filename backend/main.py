@@ -6,7 +6,7 @@ import uuid
 import traceback
 from datetime import datetime
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -62,18 +62,17 @@ def get_user_id(authorization: str = Header(...)) -> str:
     return resp.json()["id"]
 
 
-def run_pipeline(job_id: str, req: JobRequest):
+def run_pipeline_from_path(job_id: str, video_path: str, title: str, req_video_type: str, req_n_clips: int, req_tracking_mode: str):
+    """Cœur du pipeline: à partir d'un fichier vidéo déjà présent sur disque."""
     job = JOBS[job_id]
     try:
-        job["status"] = "downloading"
-        video_path, info = download_video(req.url, output_dir="downloads")
-        job["title"] = info.get("title", "vidéo")
+        job["title"] = title
 
         job["status"] = "transcribing"
         transcript = transcribe(video_path)
 
         job["status"] = "analyzing"
-        highlights = find_highlights(transcript["segments"], n=req.n_clips, video_type=req.video_type)
+        highlights = find_highlights(transcript["segments"], n=req_n_clips, video_type=req_video_type)
 
         job["status"] = "editing"
         job["total_clips"] = len(highlights)
@@ -84,7 +83,7 @@ def run_pipeline(job_id: str, req: JobRequest):
                 source_path=video_path,
                 highlight=h,
                 words=transcript["words"],
-                tracking_mode=req.tracking_mode,
+                tracking_mode=req_tracking_mode,
                 work_dir=f"work/{job_id}",
                 final_output_dir=f"output/{job_id}",
                 index=i,
@@ -104,6 +103,19 @@ def run_pipeline(job_id: str, req: JobRequest):
         job["traceback"] = traceback.format_exc()
 
 
+def run_pipeline(job_id: str, req: JobRequest):
+    job = JOBS[job_id]
+    try:
+        job["status"] = "downloading"
+        video_path, info = download_video(req.url, output_dir="downloads")
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+        job["traceback"] = traceback.format_exc()
+        return
+    run_pipeline_from_path(job_id, video_path, info.get("title", "vidéo"), req.video_type, req.n_clips, req.tracking_mode)
+
+
 @app.post("/jobs")
 def create_job(req: JobRequest, background_tasks: BackgroundTasks, user_id: str = Depends(get_user_id)):
     job_id = str(uuid.uuid4())
@@ -116,6 +128,36 @@ def create_job(req: JobRequest, background_tasks: BackgroundTasks, user_id: str 
         "total_clips": req.n_clips,
     }
     background_tasks.add_task(run_pipeline, job_id, req)
+    return {"job_id": job_id}
+
+
+@app.post("/jobs/upload")
+def create_job_upload(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    video_type: str = Form("podcast"),
+    n_clips: int = Form(3),
+    tracking_mode: str = Form("simple"),
+    user_id: str = Depends(get_user_id),
+):
+    job_id = str(uuid.uuid4())
+    os.makedirs("downloads", exist_ok=True)
+    ext = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
+    video_path = os.path.join("downloads", f"{job_id}{ext}")
+    with open(video_path, "wb") as f:
+        f.write(file.file.read())
+
+    JOBS[job_id] = {
+        "id": job_id,
+        "user_id": user_id,
+        "status": "queued",
+        "created_at": datetime.utcnow().isoformat(),
+        "progress": 0,
+        "total_clips": n_clips,
+    }
+    background_tasks.add_task(
+        run_pipeline_from_path, job_id, video_path, file.filename or "vidéo", video_type, n_clips, tracking_mode
+    )
     return {"job_id": job_id}
 
 
