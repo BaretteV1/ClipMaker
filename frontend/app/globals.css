@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+body {
+  background-color: #14120f;
+  color: #eee8dc;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+::selection {
+  background-color: #e8a33d;
+  color: #14120f;
+}
