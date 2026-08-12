@@ -10,14 +10,16 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import jwt
 
 from pipeline.download import download_video
 from pipeline.transcribe import transcribe
 from pipeline.highlights import find_highlights
 from pipeline.assemble import build_clip
 
-SUPABASE_JWT_SECRET = os.environ["SUPABASE_JWT_SECRET"]
+import requests
+
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "*")
 
 app = FastAPI(title="Clip Factory API")
@@ -46,15 +48,18 @@ class JobRequest(BaseModel):
 
 
 def get_user_id(authorization: str = Header(...)) -> str:
-    """Vérifie le token Supabase envoyé par le frontend et retourne l'id utilisateur."""
+    """Vérifie le token Supabase en interrogeant directement l'API Supabase Auth."""
     if not authorization.startswith("Bearer "):
         raise HTTPException(401, "Token manquant")
     token = authorization.removeprefix("Bearer ")
-    try:
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
-    except jwt.PyJWTError as e:
-        raise HTTPException(401, f"Token invalide: {e}")
-    return payload["sub"]
+    resp = requests.get(
+        f"{SUPABASE_URL}/auth/v1/user",
+        headers={"Authorization": f"Bearer {token}", "apikey": SUPABASE_ANON_KEY},
+        timeout=10,
+    )
+    if resp.status_code != 200:
+        raise HTTPException(401, f"Token invalide: {resp.text}")
+    return resp.json()["id"]
 
 
 def run_pipeline(job_id: str, req: JobRequest):
