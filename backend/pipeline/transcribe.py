@@ -2,7 +2,7 @@
 import os
 import json
 import subprocess
-import google.generativeai as genai
+from google import genai
 
 
 def _extract_audio(video_path: str) -> str:
@@ -30,11 +30,10 @@ def _split_words(segment: dict) -> list[dict]:
 
 
 def transcribe(video_path: str, language: str | None = None) -> dict:
-    genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     audio_path = _extract_audio(video_path)
-    uploaded = genai.upload_file(audio_path)
+    uploaded = client.files.upload(file=audio_path)
 
-    model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = (
         "Transcris cet audio en entier, du début à la fin, dans sa langue d'origine. "
         "Découpe en segments courts (5 à 12 mots chacun). Réponds STRICTEMENT en JSON, "
@@ -42,7 +41,10 @@ def transcribe(video_path: str, language: str | None = None) -> dict:
         '[{"start": 0.0, "end": 2.3, "text": "..."}, ...] '
         "avec start/end en secondes, aussi précis que possible."
     )
-    resp = model.generate_content([uploaded, prompt])
+    resp = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[uploaded, prompt],
+    )
     content = resp.text.strip()
     if content.startswith("```"):
         content = content.strip("`")
@@ -57,7 +59,7 @@ def transcribe(video_path: str, language: str | None = None) -> dict:
 
     os.remove(audio_path)
     try:
-        genai.delete_file(uploaded.name)
+        client.files.delete(name=uploaded.name)
     except Exception:
         pass
 
