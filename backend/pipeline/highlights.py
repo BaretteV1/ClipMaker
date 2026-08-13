@@ -1,7 +1,8 @@
 """Envoie la transcription à Gemini (gratuit, tier généreux) pour identifier les meilleurs extraits."""
 import json
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 SYSTEM_PROMPT = """Tu es un monteur expert en contenu viral pour TikTok / Reels / YouTube Shorts.
 On te donne la transcription complète d'une vidéo (podcast, reportage ou combat/sport), avec les
@@ -29,13 +30,7 @@ hook_score est une note de 1 à 10 sur le potentiel viral. Trie la liste du meil
 
 
 def find_highlights(segments: list[dict], n: int = 5, video_type: str = "podcast") -> list[dict]:
-    genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-    # gemini-2.5-flash: gratuit sur le tier free (rate-limité). Si Google le déprécie,
-    # remplace par le dernier modèle "flash" gratuit listé sur ai.google.dev/gemini-api/docs/pricing
-    model = genai.GenerativeModel(
-        "gemini-2.5-flash",
-        system_instruction=SYSTEM_PROMPT.format(n=n),
-    )
+    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
     transcript_text = "\n".join(
         f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}" for s in segments
@@ -46,13 +41,16 @@ def find_highlights(segments: list[dict], n: int = 5, video_type: str = "podcast
         f"Transcription (timestamps en secondes):\n{transcript_text}"
     )
 
-    resp = model.generate_content(
-        user_prompt,
-        generation_config=genai.types.GenerationConfig(temperature=0.4),
+    resp = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT.format(n=n),
+            temperature=0.4,
+        ),
     )
 
     content = resp.text.strip()
-    # Nettoyage au cas où le modèle entoure sa réponse de ```json ... ```
     if content.startswith("```"):
         content = content.strip("`")
         if content.startswith("json"):
@@ -62,6 +60,6 @@ def find_highlights(segments: list[dict], n: int = 5, video_type: str = "podcast
     try:
         highlights = json.loads(content)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Réponse Groq non-JSON: {content[:500]}") from e
+        raise ValueError(f"Réponse Gemini non-JSON: {content[:500]}") from e
 
     return highlights
