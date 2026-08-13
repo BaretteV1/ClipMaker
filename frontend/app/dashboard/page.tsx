@@ -14,6 +14,24 @@ type Job = {
   error?: string;
 };
 
+const STATUS_PERCENT: Record<Job["status"], number> = {
+  queued: 5,
+  downloading: 15,
+  transcribing: 40,
+  analyzing: 55,
+  editing: 70,
+  done: 100,
+  error: 100,
+};
+
+function jobPercent(job: Job): number {
+  if (job.status === "editing" && job.total_clips) {
+    const clipShare = (job.progress ?? 0) / job.total_clips;
+    return Math.round(55 + clipShare * 40);
+  }
+  return STATUS_PERCENT[job.status];
+}
+
 const STATUS_LABEL: Record<Job["status"], string> = {
   queued: "En file d'attente…",
   downloading: "Téléchargement de la vidéo…",
@@ -213,8 +231,11 @@ export default function Dashboard() {
         <button
           type="submit"
           disabled={job !== null && job.status !== "done" && job.status !== "error"}
-          className="w-full bg-reel-amber text-reel-bg font-display font-bold py-2.5 text-sm tracking-wide hover:bg-reel-amberDim disabled:opacity-50 transition-colors"
+          className="w-full bg-reel-amber text-reel-bg font-display font-bold py-2.5 text-sm tracking-wide hover:bg-reel-amberDim disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
         >
+          {job !== null && job.status !== "done" && job.status !== "error" && (
+            <span className="inline-block w-3.5 h-3.5 border-2 border-reel-bg border-t-transparent rounded-full animate-spin" />
+          )}
           GÉNÉRER LES CLIPS
         </button>
       </form>
@@ -223,10 +244,25 @@ export default function Dashboard() {
         <div className="border border-reel-line bg-reel-panel p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-reel-text">{job.title || "Traitement en cours"}</p>
-            <span className={`text-xs ${job.status === "error" ? "text-reel-rec" : "text-reel-amber"}`}>
+            <span className={`flex items-center gap-2 text-xs ${job.status === "error" ? "text-reel-rec" : "text-reel-amber"}`}>
+              {job.status !== "done" && job.status !== "error" && (
+                <span className="inline-block w-3 h-3 border-2 border-reel-amber border-t-transparent rounded-full animate-spin" />
+              )}
               {STATUS_LABEL[job.status]}
             </span>
           </div>
+
+          {job.status !== "error" && (
+            <div className="mb-3">
+              <div className="h-1.5 w-full bg-reel-line overflow-hidden">
+                <div
+                  className="h-full bg-reel-amber transition-all duration-500 ease-out"
+                  style={{ width: `${jobPercent(job)}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-reel-dim mt-1 text-right">{jobPercent(job)}%</p>
+            </div>
+          )}
 
           {job.status === "editing" && job.total_clips ? (
             <p className="text-xs text-reel-dim mb-3">
