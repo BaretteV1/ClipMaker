@@ -42,7 +42,7 @@ def transcribe(video_path: str, language: str | None = None) -> dict:
         "avec start/end en secondes, aussi précis que possible."
     )
     resp = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=[uploaded, prompt],
     )
     content = resp.text.strip()
