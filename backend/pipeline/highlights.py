@@ -42,7 +42,7 @@ def find_highlights(segments: list[dict], n: int = 5, video_type: str = "podcast
     )
 
     resp = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=user_prompt,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT.format(n=n),
